@@ -12,7 +12,7 @@ const TransacaoPontos = sequelize.define(
         },
         tipoTransacao: {
             field: 'tipo_transacao',
-            type: DataTypes.ENUM('GANHO_CODIGO', 'GASTO_VOUCHER', 'GANHO_CAMPANHA'),
+            type: DataTypes.ENUM('GANHO_CODIGO', 'GASTO_VOUCHER', 'GANHO_CAMPANHA', 'GANHO_COLETA'),
             allowNull: false,
         },
         pontos: {
@@ -26,21 +26,21 @@ const TransacaoPontos = sequelize.define(
         referenciaId: {
             field: 'referencia_id',
             type: DataTypes.INTEGER,
-            allowNull: true, 
+            allowNull: true,
         },
     },
     {
         freezeTableName: true,
         timestamps: true,
         createdAt: 'data_transacao',
-        updatedAt: false, 
+        updatedAt: false,
     }
 );
 
 TransacaoPontos.belongsTo(Usuario, {
     as: 'usuario',
     onUpdate: 'NO ACTION',
-    onDelete: 'CASCADE', 
+    onDelete: 'CASCADE',
     foreignKey: {
         name: 'usuarioId',
         field: 'usuario_id',
@@ -57,3 +57,5 @@ Usuario.hasMany(TransacaoPontos, {
 });
 
 export default TransacaoPontos;
+
+

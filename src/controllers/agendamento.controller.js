@@ -5,14 +5,18 @@ import Usuario from "../models/Usuario.model.js";
 import Empresa from "../models/Empresa.model.js";
 import Endereco from "../models/Endereco.model.js";
 import TipoResiduo from "../models/TipoResiduo.model.js";
+import TransacaoPontos from "../models/TransacaoPontos.model.js";
 
+const PONTOS_POR_COLETA_CONCLUIDA = 100;
+
+// Função para um utilizador criar um novo pedido de agendamento
 const create = async (req, res) => {
     const t = await sequelize.transaction();
     try {
         const { usuarioId, empresaId, enderecoColetaId, itens, ...dadosAgendamento } = req.body;
 
         if (!usuarioId || !empresaId || !enderecoColetaId || !itens || itens.length === 0) {
-            return res.status(400).send({ message: "Dados essenciais para o agendamento estão faltando." });
+            return res.status(400).send({ message: "Dados essenciais para o agendamento em falta." });
         }
 
         const novoAgendamento = await AgendamentoColeta.create({
@@ -20,7 +24,7 @@ const create = async (req, res) => {
             empresaId,
             enderecoColetaId,
             ...dadosAgendamento,
-            status: 'SOLICITADO', 
+            status: 'SOLICITADO',
         }, { transaction: t });
 
         const itensParaCriar = itens.map(item => ({
@@ -32,7 +36,7 @@ const create = async (req, res) => {
         await t.commit();
 
         return res.status(201).send({
-            message: 'Solicitação de agendamento criada com sucesso!',
+            message: 'Pedido de agendamento criado com sucesso!',
             data: novoAgendamento,
         });
 
@@ -42,6 +46,7 @@ const create = async (req, res) => {
     }
 };
 
+// Função para procurar um agendamento específico por ID
 const getById = async (req, res) => {
     try {
         const { id } = req.params;
@@ -68,6 +73,7 @@ const getById = async (req, res) => {
     }
 };
 
+// Função para listar agendamentos de um utilizador específico
 const listByUser = async (req, res) => {
     try {
         const { usuarioId } = req.params;
@@ -82,6 +88,7 @@ const listByUser = async (req, res) => {
     }
 };
 
+// Função para listar agendamentos recebidos por uma empresa
 const listByEmpresa = async (req, res) => {
     try {
         const { empresaId } = req.params;
@@ -96,34 +103,60 @@ const listByEmpresa = async (req, res) => {
     }
 };
 
+// Função para uma empresa atualizar o estado de um agendamento
 const updateStatus = async (req, res) => {
+    const t = await sequelize.transaction(); // Inicia uma transação
     try {
         const { id } = req.params;
         const { status, dataAgendada, justificativaRejeicao } = req.body;
 
-        const agendamento = await AgendamentoColeta.findByPk(id);
+        const agendamento = await AgendamentoColeta.findByPk(id, { transaction: t });
         if (!agendamento) {
+            await t.rollback();
             return res.status(404).send({ message: 'Agendamento não encontrado.' });
         }
 
+        const statusAnterior = agendamento.status;
         agendamento.status = status;
         if (dataAgendada) agendamento.dataAgendada = dataAgendada;
         if (justificativaRejeicao) agendamento.justificativaRejeicao = justificativaRejeicao;
 
-        await agendamento.save();
+        // LÓGICA DE NEGÓCIO ADICIONAL: Atribuição de pontos
+        if (status === 'CONCLUIDO' && statusAnterior !== 'CONCLUIDO') {
+            const usuario = await Usuario.findByPk(agendamento.usuarioId, { transaction: t });
+            if (usuario) {
+                // 1. Atualiza o saldo do utilizador
+                usuario.saldoPontos += PONTOS_POR_COLETA_CONCLUIDA;
+                await usuario.save({ transaction: t });
 
-        // Aqui, em uma aplicação real, você dispararia uma notificação para o usuário.
+                // 2. Cria o registo no histórico de transações
+                await TransacaoPontos.create({
+                    usuarioId: usuario.id,
+                    tipoTransacao: 'GANHO_COLETA',
+                    pontos: PONTOS_POR_COLETA_CONCLUIDA,
+                    descricao: `Pontos recebidos pela coleta #${agendamento.id}`,
+                    referenciaId: agendamento.id,
+                }, { transaction: t });
+            }
+        }
+
+        await agendamento.save({ transaction: t });
+        await t.commit(); // Confirma a transação se tudo correu bem
+
+        // Futuramente, aqui também será disparada uma notificação para o utilizador.
 
         return res.status(200).send({
-            message: `Status do agendamento atualizado para ${status}.`,
+            message: `Estado do agendamento atualizado para ${status}.`,
             data: agendamento
         });
 
     } catch (error) {
+        await t.rollback(); // Desfaz a transação em caso de erro
         return res.status(500).send({ message: error.message });
     }
 };
 
+// Função para apagar um agendamento
 const destroy = async (req, res) => {
     try {
         const { id } = req.params;
@@ -133,13 +166,12 @@ const destroy = async (req, res) => {
         }
 
         await agendamento.destroy();
-        return res.status(200).send({ message: 'Agendamento deletado com sucesso.' });
+        return res.status(200).send({ message: 'Agendamento apagado com sucesso.' });
 
     } catch (error) {
         return res.status(500).send({ message: error.message });
     }
 };
-
 
 export default {
     create,
@@ -149,3 +181,4 @@ export default {
     updateStatus,
     destroy,
 };
+

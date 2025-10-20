@@ -7,7 +7,10 @@ import TransacaoPontos from "../models/TransacaoPontos.model.js";
 import Campanha from "../models/Campanha.model.js";
 import "../models/UsuarioEndereco.model.js";
 import "../models/UsuarioCampanha.model.js";
+import {enviarEmailDeNotificacao} from "../utils/sendMail.js";
 import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
+import 'dotenv/config';
 
 const create = async (corpo) => {
     try {
@@ -440,15 +443,225 @@ const deixarCampanha = async (req, res) => {
     }
 };
 
+const login = async (req, res) => {
+    try {
+        const { email, senha } = req.body;
+        if (!email || !senha) {
+            return res.status(400).send({ message: 'Email e senha são obrigatórios.' });
+        }
+
+        const usuario = await Usuario.findOne({ where: { email } });
+        if (!usuario) {
+            return res.status(401).send({ message: 'Credenciais inválidas.' }); // Mensagem genérica por segurança
+        }
+
+        const senhaValida = await bcrypt.compare(senha, usuario.senhaHash);
+        if (!senhaValida) {
+            return res.status(401).send({ message: 'Credenciais inválidas.' });
+        }
+
+        // Gera o Token JWT
+        const payload = {
+            id: usuario.id,
+            nome: usuario.nome,
+            tipoUsuario: usuario.tipoUsuario,
+        };
+
+        const token = jwt.sign(
+            payload,
+            process.env.JWT_SECRET,
+            { expiresIn: '24h' } // Token expira em 24 horas
+        );
+
+        res.status(200).send({
+            message: 'Login bem-sucedido!',
+            token: token
+        });
+
+    } catch (error) {
+        return res.status(500).send({ message: error.message });
+    }
+};
+
+const recuperacaoSenha = async (req, res) => {
+    try {
+        const { email } = req.body;
+        const usuario = await Usuario.findOne({ where: { email } });
+
+        if (!usuario) {
+            return res.status(200).send({ message: 'Se um utilizador com este email existir, um código de recuperação foi enviado.' });
+        }
+
+        const codigo = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiraCodigo = new Date();
+        expiraCodigo.setMinutes(expiraCodigo.getMinutes() + 30);
+
+        usuario.codigoTemporario = codigo;
+        usuario.expiracaoCodigoTemporario = expiraCodigo;
+        await usuario.save();
+
+        const corpoEmail = `<p>Olá, ${usuario.nome},</p>
+            <p>Seu código de recuperação de senha é: <strong>${codigo}</strong></p>
+            <p>Este código expira em 30 minutos.</p>`;
+
+        // await sendMail(usuario.email, usuario.nome, corpoEmail, 'Recuperação de Senha');
+        console.log(`Email de recuperação para ${usuario.email} com o código ${codigo}`);
+
+        return res.status(200).send({
+            message: 'Se um utilizador com este email existir, um código de recuperação foi enviado.',
+        });
+
+    } catch (error) {
+        return res.status(500).send({ message: error.message });
+    }
+};
+
+const redefinirSenha = async (req, res) => {
+    try {
+        const { email, codigo, novaSenha } = req.body;
+        const usuario = await Usuario.findOne({ where: { email } });
+
+        if (!usuario) {
+            return res.status(404).send({ message: 'Utilizador não encontrado.' });
+        }
+
+        if (usuario.codigoTemporario !== codigo) {
+            return res.status(400).send({ message: 'Código inválido.' });
+        }
+
+        if (new Date() > usuario.expiracaoCodigoTemporario) {
+            return res.status(400).send({ message: 'Código expirado.' });
+        }
+
+        const senhaHash = await bcrypt.hash(novaSenha, 10);
+
+        usuario.senhaHash = senhaHash;
+        usuario.codigoTemporario = null;
+        usuario.expiracaoCodigoTemporario = null;
+        await usuario.save();
+
+        return res.status(200).send({
+            message: 'Senha redefinida com sucesso.',
+        });
+
+    } catch (error) {
+        return res.status(500).send({ message: error.message });
+    }
+};
+
+const resgatarCodigoDiario = async (req, res) => {
+    const t = await sequelize.transaction();
+    try {
+        const { usuarioId } = req.params;
+        const { codigo } = req.body;
+
+        if (!codigo) {
+            return res.status(400).send({ message: 'O código é obrigatório.' });
+        }
+
+        const usuario = await Usuario.findByPk(usuarioId, { transaction: t });
+        if (!usuario) {
+            await t.rollback();
+            return res.status(404).send({ message: 'Utilizador não encontrado.' });
+        }
+
+        // Encontra o código que é válido para a data de hoje
+        const hoje = new Date().toISOString().slice(0, 10);
+        const codigoDiario = await CodigoDiarioPontoColeta.findOne({
+            where: { codigo: codigo, dataValidade: hoje }
+        }, { transaction: t });
+
+        if (!codigoDiario) {
+            await t.rollback();
+            return res.status(404).send({ message: 'Código inválido ou expirado.' });
+        }
+
+        // Verifica se o utilizador já resgatou este código específico
+        const resgateExistente = await ResgateUsuario.findOne({
+            where: {
+                usuarioId: usuario.id,
+                codigoDiarioId: codigoDiario.id
+            }
+        }, { transaction: t });
+
+        if (resgateExistente) {
+            await t.rollback();
+            return res.status(400).send({ message: 'Este código já foi resgatado por você.' });
+        }
+
+        // Procede com o resgate
+        const pontosGanhos = codigoDiario.pontosValor;
+        usuario.saldoPontos += pontosGanhos;
+        
+        await usuario.save({ transaction: t });
+
+        const resgate = await ResgateUsuario.create({
+            usuarioId: usuario.id,
+            codigoDiarioId: codigoDiario.id
+        }, { transaction: t });
+
+        await TransacaoPontos.create({
+            usuarioId: usuario.id,
+            tipoTransacao: 'GANHO_CODIGO',
+            pontos: pontosGanhos,
+            descricao: `Resgate de código do ponto de coleta #${codigoDiario.pontoColetaId}`,
+            referenciaId: resgate.id,
+        }, { transaction: t });
+
+        await t.commit();
+        
+        return res.status(200).send({
+            message: `Parabéns! Você ganhou ${pontosGanhos} pontos.`,
+        });
+
+    } catch (error) {
+        await t.rollback();
+        return res.status(500).send({ message: error.message });
+    }
+};
+
+const listarTransacoesPontos = async (req, res) => {
+    try {
+        const { usuarioId } = req.params;
+        const transacoes = await TransacaoPontos.findAll({
+            where: { usuarioId },
+            order: [['data_transacao', 'DESC']]
+        });
+        return res.status(200).send({ data: transacoes });
+    } catch (error) {
+        return res.status(500).send({ message: error.message });
+    }
+};
+
+const listarVouchersResgatados = async (req, res) => {
+    try {
+        const { usuarioId } = req.params;
+        const vouchersResgatados = await UsuarioVoucher.findAll({
+            where: { usuarioId },
+            include: [{ model: Voucher, as: 'voucher' }],
+            order: [['data_resgate', 'DESC']]
+        });
+        return res.status(200).send({ data: vouchersResgatados });
+    } catch (error) {
+        return res.status(500).send({ message: error.message });
+    }
+};
+
 export default {
     get,
     persist,
     destroy,
     addEndereco,
     listEnderecos,
-    updateEndereco, 
-    destroyEndereco, 
+    updateEndereco,
+    destroyEndereco,
     resgatarVoucher,
     apoiarCampanha,
     deixarCampanha,
+    login,
+    recuperacaoSenha,
+    redefinirSenha,
+    resgatarCodigoDiario,     
+    listarTransacoesPontos,   
+    listarVouchersResgatados, 
 }
