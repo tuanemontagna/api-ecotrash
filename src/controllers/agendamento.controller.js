@@ -6,6 +6,7 @@ import Empresa from "../models/Empresa.model.js";
 import Endereco from "../models/Endereco.model.js";
 import TipoResiduo from "../models/TipoResiduo.model.js";
 import TransacaoPontos from "../models/TransacaoPontos.model.js";
+import { enviarEmailDeNotificacao } from "../utils/sendMail.js";
 
 const PONTOS_POR_COLETA_CONCLUIDA = 100;
 
@@ -143,7 +144,48 @@ const updateStatus = async (req, res) => {
         await agendamento.save({ transaction: t });
         await t.commit(); // Confirma a transação se tudo correu bem
 
-        // Futuramente, aqui também será disparada uma notificação para o utilizador.
+        // Envia notificação por e-mail ao usuário solicitante (não bloqueante)
+        try {
+            const usuario = await Usuario.findByPk(agendamento.usuarioId, { attributes: ['nome', 'email'] });
+            if (usuario?.email) {
+                let assunto = `Atualização do agendamento #${agendamento.id}`;
+                let corpo = `<p>Olá, ${usuario.nome || 'usuário'}!</p>`;
+
+                const dataFmt = agendamento.dataAgendada ? new Date(agendamento.dataAgendada).toLocaleString('pt-BR') : null;
+
+                switch ((agendamento.status || '').toUpperCase()) {
+                    case 'CONFIRMADA':
+                    case 'AGENDADA':
+                        assunto = `Seu agendamento #${agendamento.id} foi confirmado`;
+                        corpo += `<p>Seu pedido de coleta foi confirmado${dataFmt ? ` para <strong>${dataFmt}</strong>` : ''}.</p>`;
+                        break;
+                    case 'REJEITADA':
+                        assunto = `Seu agendamento #${agendamento.id} foi rejeitado`;
+                        corpo += `<p>Infelizmente, seu pedido de coleta foi rejeitado.</p>`;
+                        if (agendamento.justificativaRejeicao) {
+                            corpo += `<p>Motivo: <em>${agendamento.justificativaRejeicao}</em></p>`;
+                        }
+                        break;
+                    case 'CANCELADO':
+                        assunto = `Seu agendamento #${agendamento.id} foi cancelado`;
+                        corpo += `<p>O agendamento foi cancelado. Se precisar, você pode solicitar novamente quando quiser.</p>`;
+                        break;
+                    case 'CONCLUIDO':
+                        assunto = `Coleta concluída • agendamento #${agendamento.id}`;
+                        corpo += `<p>Sua coleta foi concluída com sucesso.</p>`;
+                        corpo += `<p>Você ganhou <strong>${PONTOS_POR_COLETA_CONCLUIDA}</strong> pontos em sua conta.</p>`;
+                        corpo += `<p>Obrigado por contribuir com a sustentabilidade!</p>`;
+                        break;
+                    default:
+                        corpo += `<p>O status do seu agendamento foi atualizado para <strong>${agendamento.status}</strong>.</p>`;
+                }
+
+                corpo += `<p>Código do agendamento: <strong>#${agendamento.id}</strong></p>`;
+                await enviarEmailDeNotificacao(usuario.email, usuario.nome || 'Usuário', assunto, corpo);
+            }
+        } catch (e) {
+            console.warn('Falha ao enviar e-mail de notificação do agendamento:', e?.message || e);
+        }
 
         return res.status(200).send({
             message: `Estado do agendamento atualizado para ${status}.`,

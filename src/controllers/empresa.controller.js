@@ -186,10 +186,30 @@ const associarCampanha = async (req, res) => {
     }
 };
 
+const desassociarCampanha = async (req, res) => {
+    try {
+        const { empresaId, campanhaId } = req.params;
+
+        const empresa = await Empresa.findByPk(empresaId);
+        const campanha = await Campanha.findByPk(campanhaId);
+
+        if (!empresa || !campanha) {
+            return res.status(404).send({ message: 'Empresa ou Campanha não encontrada.' });
+        }
+
+        await empresa.removeCampanha(campanha);
+        return res.status(200).send({ message: 'Empresa removida da campanha com sucesso.' });
+
+    } catch (error) {
+        return res.status(500).send({ message: error.message });
+    }
+};
+
 export default {
     get,
     persist,
     destroy,
     associarTipoResiduo,
     associarCampanha,
+    desassociarCampanha,
 }

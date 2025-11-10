@@ -647,6 +647,41 @@ const listarVouchersResgatados = async (req, res) => {
     }
 };
 
+const listarCampanhasApoiadas = async (req, res) => {
+    try {
+        const { usuarioId } = req.params;
+        const usuario = await Usuario.findByPk(usuarioId, {
+            include: [{ model: Campanha, as: 'campanhasApoiadas', through: { attributes: [] } }]
+        });
+        if (!usuario) {
+            return res.status(404).send({ message: 'Usuário não encontrado.' });
+        }
+        return res.status(200).send({ data: usuario.campanhasApoiadas || [] });
+    } catch (error) {
+        return res.status(500).send({ message: error.message });
+    }
+};
+
+// Retorna o usuário autenticado (via JWT)
+const me = async (req, res) => {
+    try {
+        const authUser = req.usuario;
+        if (!authUser?.id) {
+            return res.status(401).send({ message: 'Não autenticado.' });
+        }
+        const usuario = await Usuario.findOne({
+            where: { id: authUser.id },
+            attributes: { exclude: ['senhaHash'] }
+        });
+        if (!usuario) {
+            return res.status(404).send({ message: 'Usuário não encontrado.' });
+        }
+        return res.status(200).send({ data: usuario });
+    } catch (error) {
+        return res.status(500).send({ message: error.message });
+    }
+};
+
 export default {
     get,
     persist,
@@ -663,5 +698,7 @@ export default {
     redefinirSenha,
     resgatarCodigoDiario,     
     listarTransacoesPontos,   
-    listarVouchersResgatados, 
+    listarVouchersResgatados,
+    listarCampanhasApoiadas,
+    me,
 }
