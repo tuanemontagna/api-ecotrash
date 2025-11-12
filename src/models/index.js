@@ -23,7 +23,7 @@ import { sequelize } from '../config/postgres.js';
 
 (async () => {
     // Para sincronizar todas as tabelas de uma vez, descomente a linha abaixo em seu arquivo de conexão principal
-   //  await sequelize.sync({ force: true });
+    //await sequelize.sync({ force: true });
 
     // Ou para sincronizar individualmente:
     // await Usuario.sync({ force: true });

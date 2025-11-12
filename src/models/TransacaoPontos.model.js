@@ -12,7 +12,7 @@ const TransacaoPontos = sequelize.define(
         },
         tipoTransacao: {
             field: 'tipo_transacao',
-            type: DataTypes.ENUM('GANHO_CODIGO', 'GASTO_VOUCHER', 'GANHO_CAMPANHA', 'GANHO_COLETA'),
+            type: DataTypes.ENUM('GANHO_CODIGO', 'GASTO_VOUCHER', 'GANHO_CAMPANHA'),
             allowNull: false,
         },
         pontos: {

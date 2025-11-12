@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { sequelize } from "../config/postgres.js";
 import Usuario from "../models/Usuario.model.js";
 import Endereco from "../models/Endereco.model.js";
@@ -5,12 +6,17 @@ import Voucher from "../models/Voucher.model.js";
 import UsuarioVoucher from "../models/UsuarioVoucher.model.js";
 import TransacaoPontos from "../models/TransacaoPontos.model.js";
 import Campanha from "../models/Campanha.model.js";
+import CodigoDiarioPontoColeta from "../models/CodigoDiarioPontoColeta.model.js";
+import ResgateUsuario from "../models/ResgateUsuario.model.js";
 import "../models/UsuarioEndereco.model.js";
 import "../models/UsuarioCampanha.model.js";
-import {enviarEmailDeNotificacao} from "../utils/sendMail.js";
 import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
-import 'dotenv/config';
+
+// helper para calcular saldo atual do usuário via transacoes_pontos
+const calcularSaldoPontos = async (usuarioId, t = undefined) => {
+    const soma = await TransacaoPontos.sum("pontos", { where: { usuarioId }, transaction: t });
+    return soma || 0;
+};
 
 const create = async (corpo) => {
     try {
@@ -32,20 +38,19 @@ const create = async (corpo) => {
         });
 
         return response;
-
     } catch (error) {
         throw new Error(error.message);
     }
-}
+};
 
 const update = async (corpo, id) => {
     try {
         const response = await Usuario.findOne({
-            where: { id }
+            where: { id },
         });
 
         if (!response) {
-            throw new Error('Usuário não encontrado para atualização.');
+            throw new Error("Usuário não encontrado para atualização.");
         }
 
         if (corpo.senha) {
@@ -53,28 +58,36 @@ const update = async (corpo, id) => {
             delete corpo.senha;
         }
 
-        Object.keys(corpo).forEach((item) => response[item] = corpo[item]);
+        Object.keys(corpo).forEach((item) => (response[item] = corpo[item]));
         await response.save();
         return response;
-
     } catch (error) {
         throw new Error(error.message);
     }
-}
+};
 
 const get = async (req, res) => {
     try {
         const id = req.params.id ? req.params.id.toString().replace(/\D/g, '') : null;
 
         if (!id) {
-            const response = await Usuario.findAll({
+            const usuarios = await Usuario.findAll({
                 order: [['id', 'desc']],
                 attributes: { exclude: ['senhaHash'] }
             });
 
+            // calcular saldos em lote
+            const saldos = await TransacaoPontos.findAll({
+                attributes: ['usuarioId', [sequelize.fn('SUM', sequelize.col('pontos')), 'saldo']],
+                group: ['usuarioId']
+            });
+            const saldosMap = new Map(saldos.map(s => [s.get('usuarioId'), Number(s.get('saldo'))]));
+
+            const data = usuarios.map(u => ({ ...u.toJSON(), saldoPontos: saldosMap.get(u.id) ?? 0 }));
+
             return res.status(200).send({
-                message: `${response.length} usuários encontrados.`,
-                data: response,
+                message: `${data.length} usuários encontrados.`,
+                data,
             });
         }
 
@@ -87,9 +100,10 @@ const get = async (req, res) => {
             return res.status(404).send('Usuário não encontrado.');
         }
 
+        const saldo = await calcularSaldoPontos(response.id);
         return res.status(200).send({
             message: 'Usuário encontrado.',
-            data: response,
+            data: { ...response.toJSON(), saldoPontos: saldo },
         });
 
     } catch (error) {
@@ -282,7 +296,7 @@ const resgatarVoucher = async (req, res) => {
             return res.status(400).send({ message: 'O ID do voucher é obrigatório.' });
         }
 
-        const usuario = await Usuario.findByPk(usuarioId, { transaction: t });
+    const usuario = await Usuario.findByPk(usuarioId, { transaction: t });
         const voucher = await Voucher.findByPk(voucherId, { transaction: t });
 
         if (!usuario) {
@@ -301,12 +315,11 @@ const resgatarVoucher = async (req, res) => {
             await t.rollback();
             return res.status(400).send({ message: 'Este voucher está esgotado.' });
         }
-        if (usuario.saldoPontos < voucher.custoPontos) {
+        const saldoAtual = await calcularSaldoPontos(usuario.id, t);
+        if (saldoAtual < voucher.custoPontos) {
             await t.rollback();
             return res.status(400).send({ message: 'Pontos insuficientes para resgatar este voucher.' });
         }
-
-        usuario.saldoPontos -= voucher.custoPontos;
         if (voucher.quantidadeDisponivel !== null) {
             voucher.quantidadeDisponivel -= 1;
         }
@@ -328,7 +341,6 @@ const resgatarVoucher = async (req, res) => {
             referenciaId: resgate.id,
         }, { transaction: t });
 
-        await usuario.save({ transaction: t });
         await voucher.save({ transaction: t });
 
         await t.commit();
@@ -379,8 +391,6 @@ const apoiarCampanha = async (req, res) => {
 
         const pontosGanhos = campanha.pontosPorAdesao;
         if (pontosGanhos > 0) {
-            usuario.saldoPontos += pontosGanhos;
-
             await TransacaoPontos.create({
                 usuarioId,
                 tipoTransacao: 'GANHO_CAMPANHA',
@@ -388,8 +398,6 @@ const apoiarCampanha = async (req, res) => {
                 descricao: `Apoio à campanha: ${campanha.titulo}`,
                 referenciaId: campanha.id,
             }, { transaction: t });
-
-            await usuario.save({ transaction: t });
         }
 
         await t.commit();
@@ -443,45 +451,7 @@ const deixarCampanha = async (req, res) => {
     }
 };
 
-const login = async (req, res) => {
-    try {
-        const { email, senha } = req.body;
-        if (!email || !senha) {
-            return res.status(400).send({ message: 'Email e senha são obrigatórios.' });
-        }
-
-        const usuario = await Usuario.findOne({ where: { email } });
-        if (!usuario) {
-            return res.status(401).send({ message: 'Credenciais inválidas.' }); // Mensagem genérica por segurança
-        }
-
-        const senhaValida = await bcrypt.compare(senha, usuario.senhaHash);
-        if (!senhaValida) {
-            return res.status(401).send({ message: 'Credenciais inválidas.' });
-        }
-
-        // Gera o Token JWT
-        const payload = {
-            id: usuario.id,
-            nome: usuario.nome,
-            tipoUsuario: usuario.tipoUsuario,
-        };
-
-        const token = jwt.sign(
-            payload,
-            process.env.JWT_SECRET,
-            { expiresIn: '24h' } // Token expira em 24 horas
-        );
-
-        res.status(200).send({
-            message: 'Login bem-sucedido!',
-            token: token
-        });
-
-    } catch (error) {
-        return res.status(500).send({ message: error.message });
-    }
-};
+// Login movido para auth.controller
 
 const recuperacaoSenha = async (req, res) => {
     try {
@@ -589,11 +559,8 @@ const resgatarCodigoDiario = async (req, res) => {
             return res.status(400).send({ message: 'Este código já foi resgatado por você.' });
         }
 
-        // Procede com o resgate
-        const pontosGanhos = codigoDiario.pontosValor;
-        usuario.saldoPontos += pontosGanhos;
-        
-        await usuario.save({ transaction: t });
+    // Procede com o resgate
+    const pontosGanhos = codigoDiario.pontosValor;
 
         const resgate = await ResgateUsuario.create({
             usuarioId: usuario.id,
@@ -628,6 +595,19 @@ const listarTransacoesPontos = async (req, res) => {
             order: [['data_transacao', 'DESC']]
         });
         return res.status(200).send({ data: transacoes });
+    } catch (error) {
+        return res.status(500).send({ message: error.message });
+    }
+};
+
+// Retorna saldo calculado dinamicamente (soma das transações)
+const saldo = async (req, res) => {
+    try {
+        const { usuarioId } = req.params;
+        const usuario = await Usuario.findByPk(usuarioId);
+        if (!usuario) return res.status(404).send({ message: 'Usuário não encontrado.' });
+        const valor = await calcularSaldoPontos(usuarioId);
+        return res.status(200).send({ saldo: valor });
     } catch (error) {
         return res.status(500).send({ message: error.message });
     }
@@ -693,7 +673,6 @@ export default {
     resgatarVoucher,
     apoiarCampanha,
     deixarCampanha,
-    login,
     recuperacaoSenha,
     redefinirSenha,
     resgatarCodigoDiario,     
@@ -701,4 +680,5 @@ export default {
     listarVouchersResgatados,
     listarCampanhasApoiadas,
     me,
+    saldo,
 }

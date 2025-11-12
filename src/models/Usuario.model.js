@@ -40,32 +40,16 @@ const Usuario = sequelize.define(
             allowNull: true,
             unique: true,
         },
-        saldoPontos: {
-            field: 'saldo_pontos',
-            type: DataTypes.INTEGER,
-            allowNull: false,
-            defaultValue: 0,
-        },
         ativo: {
             type: DataTypes.BOOLEAN,
             defaultValue: true,
-        },
-                codigoTemporario: {
-            field: 'codigo_temporario',
-            type: DataTypes.STRING,
-            allowNull: true,
-        },
-        expiracaoCodigoTemporario: {
-            field: 'expiracao_codigo_temporario',
-            type: DataTypes.DATE,
-            allowNull: true,
         },
     },
     {
         freezeTableName: true,
         timestamps: true,
-        createdAt: 'created_at',
-        updatedAt: 'updated_at',
+        createdAt: 'data_cadastro',
+        updatedAt: false,
     }
 );
 

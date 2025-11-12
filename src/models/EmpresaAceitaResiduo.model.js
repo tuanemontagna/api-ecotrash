@@ -6,10 +6,17 @@ import TipoResiduo from "./TipoResiduo.model.js";
 const EmpresaAceitaResiduo = sequelize.define(
     'empresa_aceita_residuo',
     {
-        id: {
+        empresaId: {
+            field: 'empresa_id',
             type: DataTypes.INTEGER,
             primaryKey: true,
-            autoIncrement: true,
+            allowNull: false,
+        },
+        tipoResiduoId: {
+            field: 'tipo_residuo_id',
+            type: DataTypes.INTEGER,
+            primaryKey: true,
+            allowNull: false,
         },
     },
     {

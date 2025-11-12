@@ -27,7 +27,7 @@ const Artigo = sequelize.define(
         freezeTableName: true,
         timestamps: true,
         createdAt: 'data_publicacao',
-        updatedAt: 'updated_at',
+        updatedAt: false,
     }
 );
 

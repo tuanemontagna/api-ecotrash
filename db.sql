@@ -363,4 +363,3 @@ create table usuario_campanha
 
 alter table usuario_campanha
     owner to postgres;
-

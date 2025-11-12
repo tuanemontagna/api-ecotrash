@@ -6,10 +6,17 @@ import Endereco from "./Endereco.model.js";
 const UsuarioEndereco = sequelize.define(
     'usuario_enderecos',
     {
-        id: {
+        usuarioId: {
+            field: 'usuario_id',
             type: DataTypes.INTEGER,
             primaryKey: true,
-            autoIncrement: true,
+            allowNull: false,
+        },
+        enderecoId: {
+            field: 'endereco_id',
+            type: DataTypes.INTEGER,
+            primaryKey: true,
+            allowNull: false,
         },
         isPrincipal: {
             field: 'is_principal',

@@ -1,4 +1,5 @@
 import usuarioRoute from "./usuario.route.js";
+import authRoute from "./auth.route.js";
 import campanhaRoute from "./campanha.route.js";
 import empresaRoute from "./empresa.route.js";
 import pontoColetaRoute from "./pontoColeta.route.js";
@@ -9,6 +10,7 @@ import tipoResiduoRoute from "./tipoResiduo.route.js";
 import agendamentoRoute from "./agendamento.route.js";
 
 function Routes(app) {
+    authRoute(app);
     usuarioRoute(app);
     campanhaRoute(app);
     empresaRoute(app);

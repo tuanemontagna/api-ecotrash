@@ -47,7 +47,7 @@ const AgendamentoColeta = sequelize.define(
         freezeTableName: true,
         timestamps: true,
         createdAt: 'data_solicitacao',
-        updatedAt: 'updated_at',
+        updatedAt: false,
     }
 );
 

@@ -6,10 +6,17 @@ import Campanha from "./Campanha.model.js";
 const UsuarioCampanha = sequelize.define(
     'usuario_campanha',
     {
-        id: {
+        usuarioId: {
+            field: 'usuario_id',
             type: DataTypes.INTEGER,
             primaryKey: true,
-            autoIncrement: true,
+            allowNull: false,
+        },
+        campanhaId: {
+            field: 'campanha_id',
+            type: DataTypes.INTEGER,
+            primaryKey: true,
+            allowNull: false,
         },
         ativo: {
             type: DataTypes.BOOLEAN,

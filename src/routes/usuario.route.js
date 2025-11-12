@@ -8,15 +8,15 @@ export default (app) => {
     app.get('/usuarios/:id', usuarioController.get);
     app.get('/usuarios/:usuarioId/enderecos', usuarioController.listEnderecos);
     app.get('/usuarios/:usuarioId/transacoes-pontos', usuarioController.listarTransacoesPontos);
+    app.get('/usuarios/:usuarioId/saldo', usuarioController.saldo);
     app.get('/usuarios/:usuarioId/vouchers-resgatados', usuarioController.listarVouchersResgatados);
     app.get('/usuarios/:usuarioId/campanhas-apoiadas', usuarioController.listarCampanhasApoiadas);
     app.post('/usuarios', usuarioController.persist);
     app.post('/usuarios/:usuarioId/enderecos', usuarioController.addEndereco);
     app.post('/usuarios/:usuarioId/resgatar-voucher', usuarioController.resgatarVoucher);
     app.post('/usuarios/:usuarioId/apoiar-campanha', usuarioController.apoiarCampanha);
-    app.post('/usuarios/login', usuarioController.login);
-    app.post('/usuario/esqueci-minha-senha', usuarioController.recuperacaoSenha);
-    app.post('/usuario/redefinir-senha', usuarioController.redefinirSenha);
+    // login movido para /auth/login
+    // rotas de recuperação movidas para /auth/* (e desativadas por ora)
     app.post('/usuarios/:usuarioId/resgatar-codigo', usuarioController.resgatarCodigoDiario);
     app.patch('/usuarios/:id', usuarioController.persist);
     app.patch('/usuario/:usuarioId/enderecos/:enderecoId', usuarioController.updateEndereco);
