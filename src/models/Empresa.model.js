@@ -31,6 +31,17 @@ const Empresa = sequelize.define(
             type: DataTypes.BOOLEAN,
             defaultValue: false,
         },
+        usuarioId: {
+            field: 'usuario_id',
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            unique: true,
+        },
+        enderecoId: {
+            field: 'endereco_id',
+            type: DataTypes.INTEGER,
+            allowNull: true,
+        }
     },
     {
         freezeTableName: true,
@@ -42,22 +53,21 @@ Empresa.belongsTo(Usuario, {
     as: 'usuario',
     onUpdate: 'NO ACTION',
     onDelete: 'RESTRICT', 
-    foreignKey: {
-        name: 'usuarioId',
-        field: 'usuario_id',
-        allowNull: false,
-        unique: true,
-    }
+    foreignKey: 'usuarioId'
 });
 
 Empresa.belongsTo(Endereco, {
     as: 'endereco',
     onUpdate: 'NO ACTION',
     onDelete: 'SET NULL', 
+    foreignKey: 'enderecoId'
+});
+
+Endereco.hasOne(Empresa, {
+    as: 'empresa',
     foreignKey: {
         name: 'enderecoId',
-        field: 'endereco_id',
-        allowNull: true,
+        field: 'endereco_id'
     }
 });
 

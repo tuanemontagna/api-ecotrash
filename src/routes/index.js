@@ -8,6 +8,7 @@ import resgateRoute from "./resgate.route.js";
 import artigoRoute from "./artigo.route.js";
 import tipoResiduoRoute from "./tipoResiduo.route.js";
 import agendamentoRoute from "./agendamento.route.js";
+import enderecoRoute from "./endereco.route.js";
 
 function Routes(app) {
     authRoute(app);
@@ -20,6 +21,7 @@ function Routes(app) {
     artigoRoute(app);
     tipoResiduoRoute(app);
     agendamentoRoute(app);
+    enderecoRoute(app);
 
 }
 

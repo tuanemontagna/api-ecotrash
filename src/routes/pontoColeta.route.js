@@ -6,4 +6,5 @@ export default (app) => {
     app.post('/empresas/:empresaId/pontos-coleta', pontoColetaController.persist);
     app.patch('/empresas/:empresaId/pontos-coleta/:pontoColetaId', pontoColetaController.persist);
     app.delete('/empresas/:empresaId/pontos-coleta/:pontoColetaId', pontoColetaController.destroy);
+    app.get('/empresas/:empresaId/pontos-coleta/:pontoColetaId/codigo-diario', pontoColetaController.getCodigoDiario);
 }

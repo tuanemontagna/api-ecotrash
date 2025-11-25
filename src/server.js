@@ -11,6 +11,7 @@ import './models/index.js';
 
 import Routes from './routes/index.js';
 import {sequelize} from './config/postgres.js';
+import cronService from './services/cron.service.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -42,6 +43,9 @@ app.use((req, res) => {
 sequelize.authenticate()
     .then(() => {
         console.log('deu boa');
+        cronService.initCron();
+        // Gera códigos para hoje se ainda não existirem (útil na primeira execução)
+        cronService.gerarCodigosDiarios();
     });
 
 app.listen(process.env.API_PORT, (e) => {

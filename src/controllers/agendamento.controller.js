@@ -36,6 +36,33 @@ const create = async (req, res) => {
 
         await t.commit();
 
+        // Envia notificação por e-mail para a empresa (não bloqueante)
+        try {
+            const empresa = await Empresa.findByPk(empresaId, {
+                include: [{ model: Usuario, as: 'usuario', attributes: ['email', 'nome'] }]
+            });
+            const solicitante = await Usuario.findByPk(usuarioId, { attributes: ['nome'] });
+
+            if (empresa?.usuario?.email) {
+                const assunto = `Nova solicitação de coleta #${novoAgendamento.id}`;
+                const dataFmt = dadosAgendamento.dataAgendada ? new Date(dadosAgendamento.dataAgendada).toLocaleString('pt-BR') : 'Data a definir';
+                
+                const corpo = `
+                    <p>Olá, <strong>${empresa.usuario.nome || empresa.nomeFantasia || 'Empresa'}</strong>!</p>
+                    <p>Você recebeu uma nova solicitação de coleta no sistema EcoTrash.</p>
+                    <ul>
+                        <li><strong>Solicitante:</strong> ${solicitante?.nome || 'Usuário'}</li>
+                        <li><strong>Data sugerida:</strong> ${dataFmt}</li>
+                        <li><strong>ID do Agendamento:</strong> #${novoAgendamento.id}</li>
+                    </ul>
+                    <p>Acesse seu painel para visualizar os detalhes e aprovar ou rejeitar o pedido.</p>
+                `;
+                await enviarEmailDeNotificacao(empresa.usuario.email, empresa.usuario.nome || 'Empresa', assunto, corpo);
+            }
+        } catch (e) {
+            console.warn('Falha ao enviar e-mail de notificação para a empresa:', e?.message || e);
+        }
+
         return res.status(201).send({
             message: 'Pedido de agendamento criado com sucesso!',
             data: novoAgendamento,
@@ -81,7 +108,15 @@ const listByUser = async (req, res) => {
         const agendamentos = await AgendamentoColeta.findAll({
             where: { usuarioId },
             order: [['data_solicitacao', 'DESC']],
-            include: [{ model: Empresa, as: 'empresaResponsavel', attributes: ['id', 'nomeFantasia'] }]
+            include: [
+                { model: Empresa, as: 'empresaResponsavel', attributes: ['id', 'nomeFantasia'] },
+                { 
+                    model: ItemAgendamento, 
+                    as: 'itens',
+                    include: [{ model: TipoResiduo, as: 'tipoResiduo', attributes: ['nome'] }]
+                },
+                { model: Endereco, as: 'enderecoColeta' }
+            ]
         });
         return res.status(200).send({ data: agendamentos });
     } catch (error) {
@@ -96,7 +131,15 @@ const listByEmpresa = async (req, res) => {
         const agendamentos = await AgendamentoColeta.findAll({
             where: { empresaId },
             order: [['data_solicitacao', 'DESC']],
-            include: [{ model: Usuario, as: 'solicitante', attributes: ['id', 'nome'] }]
+            include: [
+                { model: Usuario, as: 'solicitante', attributes: ['id', 'nome'] },
+                { 
+                    model: ItemAgendamento, 
+                    as: 'itens',
+                    include: [{ model: TipoResiduo, as: 'tipoResiduo', attributes: ['nome'] }]
+                },
+                { model: Endereco, as: 'enderecoColeta' }
+            ]
         });
         return res.status(200).send({ data: agendamentos });
     } catch (error) {

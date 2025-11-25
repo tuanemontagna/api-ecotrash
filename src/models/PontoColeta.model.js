@@ -73,6 +73,10 @@ PontoColeta.belongsToMany(TipoResiduo, {
         name: 'pontoColetaId',
         field: 'ponto_coleta_id'
     },
+    otherKey: {
+        name: 'tipoResiduoId',
+        field: 'tipo_residuo_id'
+    },
     timestamps: false,
 });
 
@@ -82,6 +86,10 @@ TipoResiduo.belongsToMany(PontoColeta, {
     foreignKey: {
         name: 'tipoResiduoId',
         field: 'tipo_residuo_id'
+    },
+    otherKey: {
+        name: 'pontoColetaId',
+        field: 'ponto_coleta_id'
     },
     timestamps: false,
 });

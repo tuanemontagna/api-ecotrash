@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { sequelize } from "../config/postgres.js";
+import { Op } from "sequelize";
 import Usuario from "../models/Usuario.model.js";
 import Endereco from "../models/Endereco.model.js";
 import Voucher from "../models/Voucher.model.js";
@@ -11,6 +12,7 @@ import ResgateUsuario from "../models/ResgateUsuario.model.js";
 import "../models/UsuarioEndereco.model.js";
 import "../models/UsuarioCampanha.model.js";
 import bcrypt from "bcrypt";
+import { enviarEmailDeNotificacao } from "../utils/sendMail.js";
 
 // helper para calcular saldo atual do usuário via transacoes_pontos
 const calcularSaldoPontos = async (usuarioId, t = undefined) => {
@@ -39,7 +41,7 @@ const create = async (corpo) => {
 
         return response;
     } catch (error) {
-        throw new Error(error.message);
+        throw error;
     }
 };
 
@@ -62,7 +64,7 @@ const update = async (corpo, id) => {
         await response.save();
         return response;
     } catch (error) {
-        throw new Error(error.message);
+        throw error;
     }
 };
 
@@ -132,6 +134,12 @@ const persist = async (req, res) => {
         });
 
     } catch (error) {
+        if (error.name === 'SequelizeValidationError' || error.name === 'SequelizeUniqueConstraintError') {
+            return res.status(400).send({
+                message: 'Erro de validação',
+                errors: error.errors.map(e => e.message)
+            });
+        }
         return res.status(500).send({
             message: error.message
         });
@@ -438,6 +446,36 @@ const deixarCampanha = async (req, res) => {
         }
 
         await usuario.removeCampanhasApoiada(campanha, { transaction: t });
+
+        // Verificar se houve ganho de pontos ao apoiar e reverter
+        const transacaoGanho = await TransacaoPontos.findOne({
+            where: {
+                usuarioId,
+                referenciaId: campanha.id,
+                tipoTransacao: 'GANHO_CAMPANHA',
+                pontos: { [Op.gt]: 0 }
+            },
+            order: [['data_transacao', 'DESC']],
+            transaction: t
+        });
+
+        if (transacaoGanho) {
+            await TransacaoPontos.create({
+                usuarioId,
+                tipoTransacao: 'GANHO_CAMPANHA',
+                pontos: -transacaoGanho.pontos,
+                descricao: `Saiu da campanha: ${campanha.titulo}`,
+                referenciaId: campanha.id,
+            }, { transaction: t });
+        } else if (campanha.pontosPorAdesao > 0) {
+             await TransacaoPontos.create({
+                usuarioId,
+                tipoTransacao: 'GANHO_CAMPANHA',
+                pontos: -campanha.pontosPorAdesao,
+                descricao: `Saiu da campanha: ${campanha.titulo}`,
+                referenciaId: campanha.id,
+            }, { transaction: t });
+        }
         
         await t.commit();
 
@@ -474,7 +512,7 @@ const recuperacaoSenha = async (req, res) => {
             <p>Seu código de recuperação de senha é: <strong>${codigo}</strong></p>
             <p>Este código expira em 30 minutos.</p>`;
 
-        // await sendMail(usuario.email, usuario.nome, corpoEmail, 'Recuperação de Senha');
+        await enviarEmailDeNotificacao(usuario.email, usuario.nome, 'Recuperação de Senha', corpoEmail);
         console.log(`Email de recuperação para ${usuario.email} com o código ${codigo}`);
 
         return res.status(200).send({
@@ -656,7 +694,15 @@ const me = async (req, res) => {
         if (!usuario) {
             return res.status(404).send({ message: 'Usuário não encontrado.' });
         }
-        return res.status(200).send({ data: usuario });
+
+        const saldo = await calcularSaldoPontos(usuario.id);
+
+        return res.status(200).send({ 
+            data: {
+                ...usuario.toJSON(),
+                saldoPontos: saldo
+            }
+        });
     } catch (error) {
         return res.status(500).send({ message: error.message });
     }

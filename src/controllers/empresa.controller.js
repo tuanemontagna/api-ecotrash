@@ -9,24 +9,46 @@ import bcrypt from "bcrypt";
 const create = async (corpo) => {
     const t = await sequelize.transaction();
     try {
-        const { nome, email, senha, telefone, razaoSocial, nomeFantasia, cnpj, endereco } = corpo;
+        const { nome, email, senha, telefone, razaoSocial, nomeFantasia, cnpj, endereco, usuarioId } = corpo;
 
-        if (!senha || !razaoSocial || !cnpj || !endereco) {
+        if (!usuarioId && (!senha || !nome || !email)) {
+             throw new Error("Dados essenciais para a criação do usuário da empresa estão faltando.");
+        }
+        if (!razaoSocial || !cnpj || !endereco) {
             throw new Error("Dados essenciais para a criação da empresa estão faltando.");
         }
 
-        const senhaHash = await bcrypt.hash(senha, 10);
-        const novoUsuario = await Usuario.create({
-            nome, email, senhaHash, telefone, tipoUsuario: 'EMPRESA'
-        }, { transaction: t });
+        let usuarioFinalId;
+
+        if (usuarioId) {
+            // Check if user exists
+            const usuarioExistente = await Usuario.findByPk(usuarioId, { transaction: t });
+            if (!usuarioExistente) {
+                throw new Error("Usuário informado não encontrado.");
+            }
+            usuarioFinalId = usuarioExistente.id;
+        } else {
+            const senhaHash = await bcrypt.hash(senha, 10);
+            const novoUsuario = await Usuario.create({
+                nome, email, senhaHash, telefone, tipoUsuario: 'EMPRESA'
+            }, { transaction: t });
+            usuarioFinalId = novoUsuario.id;
+            console.log('Novo usuário criado:', novoUsuario.toJSON()); // Log para debug
+        }
 
         const novoEndereco = await Endereco.create(endereco, { transaction: t });
 
+        console.log('Novo endereço criado:', novoEndereco.toJSON()); // Log para debug
+
+        console.log('Tentando criar empresa com usuarioId:', usuarioFinalId, 'e enderecoId:', novoEndereco.id); // Log para debug
+
         const novaEmpresa = await Empresa.create({
             razaoSocial, nomeFantasia, cnpj,
-            usuarioId: novoUsuario.id,
+            usuarioId: usuarioFinalId,
             enderecoId: novoEndereco.id
         }, { transaction: t });
+
+        console.log('Nova empresa criada:', novaEmpresa.toJSON()); // Log para debug
 
         await t.commit();
         return novaEmpresa;
@@ -205,8 +227,39 @@ const desassociarCampanha = async (req, res) => {
     }
 };
 
+const getMe = async (req, res) => {
+    try {
+        const usuarioId = req.usuario.id;
+        console.log('Buscando empresa para usuarioId:', usuarioId); // Log para debug
+
+        const empresa = await Empresa.findOne({
+            where: { usuarioId },
+            include: [
+                { model: Usuario, as: 'usuario', attributes: { exclude: ['senhaHash'] } },
+                { model: Endereco, as: 'endereco' },
+                { model: TipoResiduo, as: 'tiposResiduosAceitos', through: { attributes: [] } },
+                { model: Campanha, as: 'campanhas', through: { attributes: [] } }
+            ]
+        });
+
+        if (!empresa) {
+            console.log('Empresa não encontrada para usuarioId:', usuarioId); // Log para debug
+            return res.status(404).send({ message: 'Nenhuma empresa associada a este usuário.' });
+        }
+
+        return res.status(200).send({
+            message: 'Empresa encontrada.',
+            data: empresa,
+        });
+    } catch (error) {
+        console.error('Erro em getMe:', error); // Log para debug
+        return res.status(500).send({ message: error.message });
+    }
+};
+
 export default {
     get,
+    getMe,
     persist,
     destroy,
     associarTipoResiduo,
