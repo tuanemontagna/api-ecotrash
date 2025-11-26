@@ -1,6 +1,9 @@
 import Campanha from "../models/Campanha.model.js";
 import Empresa from "../models/Empresa.model.js";
 import PontoColeta from "../models/PontoColeta.model.js";
+import Usuario from "../models/Usuario.model.js";
+import Endereco from "../models/Endereco.model.js";
+import TipoResiduo from "../models/TipoResiduo.model.js";
 import { sequelize } from "../config/postgres.js";
 
 const create = async (corpo) => {
@@ -56,19 +59,60 @@ const get = async (req, res) => {
         if (!id) {
             const response = await Campanha.findAll({
                 order: [['id', 'desc']],
+                include: [
+                    {
+                        model: Usuario,
+                        as: 'apoiadores',
+                        attributes: ['id'],
+                        through: { where: { ativo: true }, attributes: [] }
+                    },
+                    {
+                        model: Empresa,
+                        as: 'empresasParceiras',
+                        attributes: ['id'],
+                        through: { attributes: [] }
+                    }
+                ]
+            });
+
+            const data = response.map(c => {
+                const json = c.toJSON();
+                json.totalApoiadores = json.apoiadores ? json.apoiadores.length : 0;
+                json.totalEmpresas = json.empresasParceiras ? json.empresasParceiras.length : 0;
+                delete json.apoiadores;
+                delete json.empresasParceiras;
+                return json;
             });
 
             return res.status(200).send({
-                message: `${response.length} campanhas encontradas.`,
-                data: response,
+                message: `${data.length} campanhas encontradas.`,
+                data: data,
             });
         }
 
         const response = await Campanha.findOne({
             where: { id },
             include: [ 
-                { model: Empresa, as: 'empresasParceiras', through: { attributes: [] } },
-                { model: PontoColeta, as: 'pontosDeColetaAssociados', through: { attributes: [] } }
+                { 
+                    model: Empresa, 
+                    as: 'empresasParceiras', 
+                    through: { attributes: [] } 
+                },
+                { 
+                    model: PontoColeta, 
+                    as: 'pontosDeColetaAssociados', 
+                    through: { attributes: [] },
+                    include: [
+                        { model: Endereco, as: 'endereco' },
+                        { model: TipoResiduo, as: 'tiposResiduosAceitos' }
+                    ]
+                },
+                {
+                    model: Usuario,
+                    as: 'apoiadores',
+                    attributes: ['id'],
+                    through: { where: { ativo: true }, attributes: [] }
+                }
             ]
         });
 
@@ -76,9 +120,14 @@ const get = async (req, res) => {
             return res.status(404).send('Campanha não encontrada.');
         }
 
+        const json = response.toJSON();
+        json.totalApoiadores = json.apoiadores ? json.apoiadores.length : 0;
+        json.totalEmpresas = json.empresasParceiras ? json.empresasParceiras.length : 0;
+        delete json.apoiadores;
+
         return res.status(200).send({
             message: 'Campanha encontrada.',
-            data: response,
+            data: json,
         });
 
     } catch (error) {
