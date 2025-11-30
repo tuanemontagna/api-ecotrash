@@ -37,6 +37,10 @@ const Voucher = sequelize.define(
             type: DataTypes.INTEGER,
             allowNull: true,
         },
+        imagem: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
     },
     {
         freezeTableName: true,

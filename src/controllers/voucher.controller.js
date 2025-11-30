@@ -9,7 +9,8 @@ const create = async (corpo) => {
             custoPontos,
             validade,
             quantidadeDisponivel,
-            cadastradoPeloAdminId 
+            cadastradoPeloAdminId,
+            imagem
         } = corpo;
 
         const response = await Voucher.create({
@@ -19,7 +20,8 @@ const create = async (corpo) => {
             custoPontos,
             validade,
             quantidadeDisponivel,
-            cadastradoPeloAdminId
+            cadastradoPeloAdminId,
+            imagem
         });
 
         return response;
@@ -86,16 +88,21 @@ const get = async (req, res) => {
 const persist = async (req, res) => {
     try {
         const id = req.params.id ? req.params.id.toString().replace(/\D/g, '') : null;
+        
+        const data = { ...req.body };
+        if (req.file) {
+            data.imagem = `/uploads/${req.file.filename}`;
+        }
 
         if (!id) {
-            const response = await create(req.body);
+            const response = await create(data);
             return res.status(201).send({
                 message: 'Voucher criado com sucesso.',
                 data: response
             });
         }
 
-        const response = await update(req.body, id);
+        const response = await update(data, id);
         return res.status(200).send({
             message: 'Voucher atualizado com sucesso.',
             data: response

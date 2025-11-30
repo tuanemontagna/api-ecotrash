@@ -35,6 +35,8 @@ app.use(morgan('combined', { stream: logStream }));
 app.use(express.json({limit: '50mb'})); //tamanho do corpo
 app.use(express.urlencoded({extended: true, limit: '50mb'})); //tamanho da rota 
 
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 Routes(app);
 app.use((req, res) => {
     res.status(404).send('404 - página não encontrada');
