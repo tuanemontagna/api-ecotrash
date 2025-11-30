@@ -10,7 +10,7 @@ ENV JWT_SECRET=teste123
 ENV EMAIL_HOST=smtp.gmail.com
 ENV EMAIL_PORT=587
 ENV EMAIL_USER=tuanemontagna74@gmail.com
-ENV EMAIL_PASS=cqoo smvj yica fpey
+ENV EMAIL_PASS="cqoo smvj yica fpey"
 ENV EMAIL_NAME=Ecotrash
 ENV EMAIL_FROM=tuanemontagna74@gmail.com
 
